@@ -11,7 +11,7 @@ npx wrangler login
 npm run deploy
 ```
 
-The build copies `index.html` and `articles/` into `dist/`, so only public site
+The build copies `index.html`, `style.css`, and `articles/` into `dist/`, so only public site
 content is uploaded. Wrangler configures the `armincat.com` custom domain and its
 DNS record. The existing `.html` article links remain valid; Cloudflare redirects
 them to clean URLs.
