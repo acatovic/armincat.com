@@ -2,19 +2,38 @@
 <html lang="en">
     <head>
         <meta charset="utf-8">
-        <title>armincat - Writing and Thoughts</title>
-        <meta name="description" content="Thoughts on AI, technology, science, economy, and other curiosities.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="description" content="Notes on artificial intelligence, technology, science, economics, and other curiosities.">
+        <title>armincat - Curiosity, mostly.</title>
+        <link rel="stylesheet" href="style.css">
     </head>
     <body>
-        <header>
-            <h1>armincat</h1>
-            <p>Thoughts on AI, technology, science, economy, and other curiosities.</p>
+        <header class="site-header">
+            <h1><a href="index.html">armincat<span>.</span></a></h1>
+            <nav aria-label="Main navigation">
+                <a href="#writing">Writing</a>
+                <!-- <a href="about.html">About</a> -->
+            </nav>
         </header>
         <main>
-            <h2>Writing</h2>
-            <ul>
-                <li><a href="articles/eunice-is-almost-here.html">2026-10-25 Eunice is almost here</a></li>
-            </ul>
+            <section class="intro">
+                <h2>Curiosity, mostly.</h2>
+                <p>Notes on artificial intelligence, technology, science, economics, and whatever else catches my attention.</p>
+            </section>
+
+            <section id="writing" class="writing">
+                <h2>Writing</h2>
+
+                <ul class="article-list">
+                    <li>
+                        <article>
+                            <time datetime="2026-10-25">October 25, 2026</time>
+                            <h3><a href="articles/eunice-is-almost-here.html">Eunice is almost here</a></h3>
+                            <p>William Gibson's fictional AI assistant, and the increasingly thin line between sci-fi and reality.</p>
+                        </article>
+                    </li>
+                </ul>
+            </section>
         </main>
         <footer>
             <p>&copy; 2026 Armin Catovic</p>
