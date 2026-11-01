@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="description" content="A look into how Codex spends your extra tokens.">
+        <title>The Hidden Tokens In Your Agent Harness</title>
+        <link rel="stylesheet" href="../style.css">
+        <link rel="canonical" href="https://armincat.com/articles/where-tokens-go.html">
+    </head>
+    <body>
+        <header class="site-header">
+            <p class="site-title"><a href="../index.html">armincat<span>.</span></a></p>
+            <nav aria-label="Main navigation">
+                <a href="../index.html#writing">Writing</a>
+            </nav>
+        </header>
+        <main>
+            <article>
+                <header class="page-header post-header">
+                    <time class="article-date" datetime="2026-11-01">November 1, 2026</time>
+                    <h1 class="page-title">The Hidden Tokens In Your Agent Harness</h1>
+                    <p class="subtitle">A look into how Codex spends your extra tokens.</p>
+                </header>
+                <div class="prose">
+                    <p>
+                        I was recently made aware of how
+                        <a href="https://gist.github.com/flamerix-ai/c3905705cc4205e5de3011fa2e74efce">
+                            Claude Code spends 15-20% of the tokens on updating a three-word status line
+                        </a>
+                        . Since I work almost entirely within <a href="https://github.com/openai/codex">Codex</a>, I
+                        decided to take a peek at the code (Codex is open source and written in Rust). If you are
+                        working with an open source harness, be that Codex, pi, OpenCode, or something else, I encourage you
+                        to explore how it actually works.
+                    </p>
+                    <h3>Giving threads a name</h3>
+                    <p>
+                        Whenever an unnamed thread receives a completed, nonempty user text message, an automatic 
+                        thread naming procedure is invoked behind the scenes.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/app/thread_routing.rs#L2070">1</a>, 
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/app/thread_title.rs#L180">2</a>
+                        </sup>
+                        This happens for example when you start a fresh Codex session and enter the first instructions
+                        into the text box. In this case the full prompt, including the title naming instructions,
+                        labels and user's text, are capped at 960 bytes and sent to an LLM.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/app/thread_title.rs#L288">3</a>, 
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/app/thread_title.rs#L275">4</a>
+                        </sup>
+                        The returned response is a structured output, resulting in a thread title that is preferably
+                        under five words, or 36 characters. The preferred model is <code>gpt-5.6-luna</code> with low
+                        reasoning effort, when signed into ChatGPT and that model exists in the catalog; otherwise it
+                        uses the current selected model.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/app/thread_title.rs#L32">5</a>
+                        </sup>
+                    </p>
+                    <p>
+                        You can also explicitly rename the thread by evoking <code>/rename &lt;TITLE&gt;</code> and
+                        this doesn't cost you anything. However, if you run <code>/rename</code> with no arguments,
+                        Codex immediately makes an LLM call requesting a title suggestion. That request uses up to
+                        eight recent substantive user/assistant messages, excluding assistant commentary.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/chatwidget/interaction.rs#L476">6</a>
+                        </sup>
+                    </p>
+                    <h3>Knowing what's happening</h3>
+                    <p>
+                        Next I took a look at the live activity indicator, to see if it's similar to how Claude Code
+                        does it. Turns out it's not. When using a model that supports it, which is any reasoning model,
+                        reasoning summaries are always requested along with the actual response.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/client.rs#L998">7</a>
+                        </sup>
+                        So Codex piggy-backs the live activity indicator with standard requests. The TUI receives
+                        <code>ResoningSummaryTextDelta</code>, accumulates its text, extracts the latest usable line,
+                        and sets the status header; there is no separate status-generation request.
+                    </p>
+                    <p>
+                        Codex TUI has a catch-up recap feature that can be invoked explicitly via <code>/recap</code>,
+                        but is also automatically enabled by default via <code>tui.auto_recap = true</code>. Automatic
+                        recaps use the current model, together with the most recent visible changes and recap
+                        instructions, resulting in a structured <code>summary</code> and nullable
+                        <code>next_action</code> fields. The full recap prompt has a byte
+                        ceiling corresponding to 8 192 estimated tokens and the currently selected model is the one
+                        used for recap.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/tui/src/app/recap.rs">8</a>
+                        </sup>
+                    </p>
+                    <h3>Remembering what matters</h3>
+                    <p>
+                        Codex memories are persistent notes carried between sessions - useful knowledge, previous
+                        decisions, your stated or implied preferences. Memories can be enabled via
+                        <code>/memories</code> option. There are two background stages, and both make additional LLM
+                        requests.
+                    </p>
+                    <p>
+                        During the extraction stage the LLM processes an eligible past thread and records useful
+                        context, i.e. what you requested, findings, changes, corrections and unfinished work. The v2
+                        prompt explicitly tells is to preserve uncertainty and avoid turning a single task instruction
+                        into a general user preference.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/memories/write/templates/memories/stage_one_system_v2.md">9</a>
+                        </sup>
+                    </p>
+                    <p>
+                        During the consolidation stage an internal agent combines those records into a compact index,
+                        updates preferences and project pointers, and removes unsupported or superseded claims.
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/memories/write/templates/memories/consolidation_v2.md">10</a>
+                        </sup>
+                    </p>
+                    <p>
+                        Extraction generally makes on request per selected thread; consolidation is an agent and can
+                        make several. By default <code>gpt-6-luna</code> is used for extraction and
+                        <code>gpt-6.1-terra</code> for consolidation, with configurable overrides. You can see your
+                        stored memories in <code>~/.codex/memories_v2/</code>.
+                    </p>
+                    <h3>Keeping watch</h3>
+                    <p>
+                        Finally we have guardian tasks. Guardian is Codex's automatic security and permission reviewer.
+                        It evaluates whether an action could cause harm and whether the user authorised its target and
+                        side effects. It implements a background classifier, which Codex can launch when an eligible
+                        action starts, in order to determine whether the current workflow is high or low risk. It uses
+                        <code>gpt-5.6-luna</code> and is just a prompt
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/prompts/templates/guardian/classifier_instructions.md">11</a> 
+                        </sup>
+                        that returns a high/low classification in the response, and converts the result into a score of
+                        1.0 or 0.0.
+                    </p>
+                    <p>
+                        Additionally there is a seperate internal agent turn that can hold execution while it evaluates
+                        the action about to be executed. For example, it makes a judgment whether the action could
+                        destroy data or disclose sensitive information, or whether it follows the necessary policies
+                        <sup>
+                            <a href="https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/prompts/templates/guardian/policy_template.md">12</a> 
+                        </sup>
+                        The result is a structured output with an allow/deny outcome, optionally with risk level,
+                        authorisation level and rationale. The reviewer can actually involve multiple LLM requests, as
+                        it reviews, inspects files, and reasons across these.
+                    </p>
+                    <br>
+                    <p>
+                        I intentionally left out more explicit features, which include actual response handling (the
+                        thing that actually builds your code), as well as context compaction. Note that with compaction
+                        if you have background compaction enabled, compaction will start ahead of the foreground limit
+                        and generate candidates in parallel.
+                    </p>
+                    <p>
+                        Understanding where the tokens go is important both for better understanding of the billing and
+                        why you are hitting rate limits, but also in terms of being in control, wherever possible, of
+                        your agentic harness.
+                    </p>
+                </div>
+            </article>
+        </main>
+        <footer class="site-footer">
+            <p>&copy; 2026 Armin Catovic</p>
+        </footer>
+    </body>
+</html>
